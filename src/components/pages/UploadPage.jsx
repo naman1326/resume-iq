@@ -4,10 +4,18 @@ import ScoreRing from "../ui/ScoreRing";
 import { useTheme } from "../../context/ThemeContext";
 import { mockAnalysis } from "../../data/mockData";
 
-const API_URL = import.meta.env.VITE_API_URL || "http://localhost:3001";
+/*
+ * Dev (`npm run dev`): always use same-origin `/api` so Vite’s proxy talks to the backend.
+ * Do not use VITE_API_URL here — a stale value (e.g. :3001) breaks when the API runs on :3002.
+ * Production / preview: use VITE_API_URL or default origin.
+ */
+const API_BASE = import.meta.env.DEV
+  ? ""
+  : (import.meta.env.VITE_API_URL ?? "http://localhost:3001");
 
 const STEPS = [
-  "Parsing document structure",
+  "Converting document to images",
+  "Analyzing visual layout & formatting",
   "Running ATS simulation",
   "Scoring sections",
   "Generating insights",
@@ -44,7 +52,7 @@ const UploadPage = ({ onAnalyze }) => {
     setTimeout(() => {
       clearInterval(iv);
       setProgress(100);
-      setTimeout(() => onAnalyze(mockAnalysis), 400);
+      setTimeout(() => onAnalyze(mockAnalysis, null), 400);
     }, 1800);
   };
 
@@ -65,22 +73,78 @@ const UploadPage = ({ onAnalyze }) => {
       const formData = new FormData();
       formData.append("resume", file);
 
-      const res  = await fetch(`${API_URL}/api/analyze`, { method: "POST", body: formData });
-      const json = await res.json();
+      const analyzeUrl = API_BASE
+        ? `${API_BASE.replace(/\/$/, "")}/api/analyze`
+        : "/api/analyze";
+      const res = await fetch(analyzeUrl, { method: "POST", body: formData });
 
-      if (!res.ok || !json.success) {
-        throw new Error(json.error || "Analysis failed. Please try again.");
+      const text = await res.text();
+      let json;
+      try {
+        json = text ? JSON.parse(text) : {};
+      } catch {
+        const snippet = text?.replace(/\s+/g, " ").trim().slice(0, 280);
+        throw new Error(
+          !res.ok
+            ? `Server error (${res.status}). ${snippet || "No response body."}`
+            : "Server returned an invalid response. Check that the backend is running and up to date."
+        );
+      }
+
+      if (!res.ok) {
+        const fromBody =
+          json.error ||
+          json.message ||
+          (typeof json.detail === "string" ? json.detail : "");
+        if (fromBody) throw new Error(fromBody);
+
+        /* Vite dev proxy returns 5xx with little/no JSON when the API is down (ECONNREFUSED). */
+        const looksLikeProxyDown =
+          import.meta.env.DEV &&
+          (res.status === 500 || res.status === 502 || res.status === 503) &&
+          (!text?.trim() ||
+            text.includes("<!DOCTYPE") ||
+            text.includes("ECONNREFUSED") ||
+            text.toLowerCase().includes("proxy error"));
+        if (looksLikeProxyDown) {
+          throw new Error(
+            "Cannot reach the API — the backend is probably not running. Open another terminal, " +
+              "cd into the backend folder, run npm run dev, then try again. " +
+              "If you use a custom PORT in backend/.env, restart the frontend (Vite) after changing it."
+          );
+        }
+
+        const bodyHint = text?.trim()
+          ? ` ${text.trim().slice(0, 400)}`
+          : "";
+        throw new Error(
+          `Request failed (${res.status}).${bodyHint || " Check the backend terminal for details."}`
+        );
+      }
+
+      if (!json.success) {
+        throw new Error(
+          json.error || json.message || "Analysis failed. Please try again."
+        );
       }
 
       clearInterval(iv);
       setProgress(100);
-      setTimeout(() => onAnalyze(json.data), 500);
+      setTimeout(() => onAnalyze(json.data, file), 500);
 
     } catch (err) {
       clearInterval(iv);
       setLoading(false);
       setProgress(0);
-      setError(err.message);
+      const msg = err?.message || String(err);
+      if (msg === "Failed to fetch" || msg.includes("NetworkError")) {
+        setError(
+          "Could not reach the API. Start the backend (npm run dev in /backend). Put PORT in backend/.env " +
+            "(e.g. 3002), restart the frontend dev server so Vite picks it up, then try again."
+        );
+      } else {
+        setError(msg);
+      }
     }
   };
 
@@ -145,7 +209,7 @@ const UploadPage = ({ onAnalyze }) => {
                 background: dragging ? "#f5f3ff" : file ? "#f0fdf4" : "var(--dropzone-bg)"
               }}
             >
-              <input ref={inputRef} type="file" accept=".pdf,.doc,.docx"
+              <input ref={inputRef} type="file" accept=".pdf,.doc,.docx,.png,.jpg,.jpeg,.webp"
                 style={{ display: "none" }}
                 onChange={(e) => handleFile(e.target.files[0])} />
 
@@ -175,7 +239,7 @@ const UploadPage = ({ onAnalyze }) => {
                     Drop your resume here
                   </p>
                   <p style={{ color: "var(--text-muted)", fontSize: 13 }}>
-                    PDF, DOC, DOCX — up to 5 MB
+                    PDF, DOC, DOCX, PNG, JPEG, WebP — up to 15 MB
                   </p>
                 </>
               )}
@@ -266,7 +330,7 @@ const UploadPage = ({ onAnalyze }) => {
               </div>
             </div>
             <p style={{ fontWeight: 700, color: "var(--text-primary)", marginBottom: 8 }}>
-              {file ? "Analysing your resume..." : "Loading demo results..."}
+              {file ? "Analysing your resume with Vision AI..." : "Loading demo results..."}
             </p>
             {STEPS.map((step, i) => (
               <div key={i} style={{

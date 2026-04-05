@@ -7,14 +7,17 @@ import Dashboard   from "./components/pages/Dashboard";
 const App = () => {
   const [screen,   setScreen]   = useState("landing");
   const [analysis, setAnalysis] = useState(null); // real AI data lives here
+  const [file,     setFile]     = useState(null); // store original file
 
-  const handleAnalyze = (data) => {
+  const handleAnalyze = (data, originalFile) => {
     setAnalysis(data);   // store real AI response
+    setFile(originalFile); // store file for JD matching
     setScreen("dashboard");
   };
 
   const handleReset = () => {
     setAnalysis(null);
+    setFile(null);
     setScreen("landing");
   };
 
@@ -22,7 +25,7 @@ const App = () => {
     <ThemeProvider>
       {screen === "landing"   && <LandingPage onGetStarted={() => setScreen("upload")} />}
       {screen === "upload"    && <UploadPage  onAnalyze={handleAnalyze} />}
-      {screen === "dashboard" && <Dashboard   analysis={analysis} onReset={handleReset} />}
+      {screen === "dashboard" && <Dashboard   analysis={analysis} file={file} onReset={handleReset} />}
     </ThemeProvider>
   );
 };

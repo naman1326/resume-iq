@@ -1,0 +1,5 @@
+- [Project Overview](project_overview.md) — AI-powered resume analysis app with React + Express + Groq Vision AI
+- [Technology Stack](tech_stack.md) — Dependencies, versions, and environment variables
+- [File Structure](file_structure.md) — Complete directory and component organization
+- [AI Prompt Design](ai_prompt_design.md) — Scoring rubrics, response schema, and consistency checks
+- [Vision Implementation](vision_implementation.md) — PDF-to-image conversion and Groq Vision API integration details

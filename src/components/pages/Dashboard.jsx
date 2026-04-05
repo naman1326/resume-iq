@@ -18,7 +18,7 @@ import useMediaQuery                from "../../hooks/useMediaQuery";
  * Dashboard receives `analysis` from App.jsx (real AI data).
  * Falls back to mockAnalysis if null (e.g. direct navigation in dev).
  */
-const Dashboard = ({ analysis, onReset }) => {
+const Dashboard = ({ analysis, file, onReset }) => {
   const data = analysis || mockAnalysis;
 
   const [tab,      setTab]      = useState("overview");
@@ -109,7 +109,7 @@ const Dashboard = ({ analysis, onReset }) => {
         </div>
 
         {/* ── JD Matcher ── */}
-        <JDMatcher />
+        <JDMatcher file={file} />
 
         {/* ── Tab Content ── */}
         {tabContent[tab]}
