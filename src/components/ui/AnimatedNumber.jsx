@@ -9,13 +9,14 @@ import { useState, useEffect, useRef } from "react";
  *   duration — animation duration in ms (default 1400)
  *   decimals — decimal places (default 0)
  */
-const AnimatedNumber = ({ value, suffix = "", duration = 1400, decimals = 0 }) => {
-  const [display, setDisplay] = useState(0);
-  const [started, setStarted]  = useState(false);
+const AnimatedNumber = ({ value, suffix = "", duration = 1400, decimals = 0, skipAnimation = false }) => {
+  const [display, setDisplay] = useState(skipAnimation ? value : 0);
+  const [started, setStarted]  = useState(skipAnimation);
   const ref = useRef();
 
   // Trigger on intersection
   useEffect(() => {
+    if (skipAnimation) return;
     const obs = new IntersectionObserver(
       ([entry]) => { if (entry.isIntersecting) { setStarted(true); obs.disconnect(); } },
       { threshold: 0.3 }

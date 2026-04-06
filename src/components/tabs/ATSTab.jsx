@@ -13,7 +13,7 @@ const checks = [
   { label: "Keyword Density",    pass: true,  note: "Good keyword distribution"            },
 ];
 
-const ATSTab = ({ data }) => {
+const ATSTab = ({ data, skipAnimation = false }) => {
   const sectionScores = Object.entries(data.sections);
 
   return (
@@ -94,7 +94,7 @@ const ATSTab = ({ data }) => {
                 <div style={{
                   height: "100%", width: `${score}%`,
                   background: `linear-gradient(90deg,${scoreColor(score)}80,${scoreColor(score)})`,
-                  borderRadius: 99, transition: "width 1.2s cubic-bezier(.4,0,.2,1)"
+                  borderRadius: 99, transition: skipAnimation ? "none" : "width 1.2s cubic-bezier(.4,0,.2,1)"
                 }} />
               </div>
             </div>

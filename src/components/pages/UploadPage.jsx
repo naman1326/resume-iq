@@ -304,7 +304,7 @@ const UploadPage = ({ onAnalyze }) => {
             {/* Stats */}
             <div style={{ display: "flex", marginTop: 32,
               borderTop: "1px solid var(--border)", paddingTop: 24 }}>
-              {[["50K+","Resumes Analysed"],["94%","Accuracy Rate"],["2s","Average Time"]].map(([v,l], i) => (
+              {[["5,000+","Resumes Analysed"],["94%","Accuracy Rate"],["15s","Average Time"]].map(([v,l], i) => (
                 <div key={i} style={{
                   flex: 1, textAlign: "center",
                   borderRight: i < 2 ? "1px solid var(--border)" : "none"

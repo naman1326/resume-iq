@@ -8,7 +8,7 @@ import ScoreRing from "../ui/ScoreRing";
 import AnimatedNumber from "../ui/AnimatedNumber";
 import { scoreColor } from "../../data/mockData";
 
-const OverviewTab = ({ data }) => {
+const OverviewTab = ({ data, skipAnimation = false }) => {
   const scores = [
     { label: "Overall",     value: data.overallScore,     icon: Star        },
     { label: "ATS Score",   value: data.atsScore,         icon: Shield      },
@@ -38,7 +38,7 @@ const OverviewTab = ({ data }) => {
             <div style={{ position: "absolute", inset: 0, display: "flex",
               flexDirection: "column", alignItems: "center", justifyContent: "center" }}>
               <span style={{ fontFamily: "'Syne',sans-serif", fontWeight: 800,
-                fontSize: 28, color: "#fff" }}><AnimatedNumber value={data.overallScore} /></span>
+                fontSize: 28, color: "#fff" }}><AnimatedNumber value={data.overallScore} skipAnimation={skipAnimation} /></span>
               <span style={{ fontSize: 11, color: "#a5b4fc", fontWeight: 600 }}>/100</span>
             </div>
           </div>
@@ -63,14 +63,14 @@ const OverviewTab = ({ data }) => {
             </div>
             <div style={{ fontFamily: "'Syne',sans-serif", fontWeight: 800,
               fontSize: 26, color: scoreColor(value), lineHeight: 1 }}>
-              <AnimatedNumber value={value} />
+              <AnimatedNumber value={value} skipAnimation={skipAnimation} />
             </div>
             <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 4, fontWeight: 600 }}>{label}</div>
             <div style={{ width: "100%", height: 4, background: "var(--progress-bg)",
               borderRadius: 99, marginTop: 10 }}>
               <div style={{ height: "100%", width: `${value}%`,
                 background: scoreColor(value), borderRadius: 99,
-                transition: "width 1.2s cubic-bezier(.4,0,.2,1)" }} />
+                transition: skipAnimation ? "none" : "width 1.2s cubic-bezier(.4,0,.2,1)" }} />
             </div>
           </div>
         ))}
@@ -78,64 +78,76 @@ const OverviewTab = ({ data }) => {
 
       {/* Radar + Trend */}
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
-        <div style={{ background: "var(--card-bg)", borderRadius: 16,
-          padding: 24, boxShadow: "var(--card-shadow)" }}>
+        <div style={{
+          background: "var(--card-bg)", borderRadius: 16,
+          padding: 24, boxShadow: "var(--card-shadow)", minHeight: 340,
+          display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", textAlign: "center"
+        }}>
           <h3 style={{ fontFamily: "'Syne',sans-serif", fontWeight: 700,
             fontSize: 15, marginBottom: 16, color: "var(--text-primary)" }}>Profile Radar</h3>
-          <ResponsiveContainer width="100%" height={220}>
-            <RadarChart data={data.radarData}>
-              <PolarGrid stroke="var(--border)" />
-              <PolarAngleAxis dataKey="subject"
-                tick={{ fontSize: 11, fill: "var(--text-muted)" }} />
-              <PolarRadiusAxis domain={[0,100]} tick={false} axisLine={false} />
-              <Radar name="Score" dataKey="A" stroke="#6366f1" fill="#6366f1"
-                fillOpacity={0.2} strokeWidth={2} dot={{ r: 4, fill: "#6366f1" }} />
-            </RadarChart>
-          </ResponsiveContainer>
+          <div style={{ width: 320, height: 240, margin: "0 auto" }}>
+            <ResponsiveContainer width="100%" height="100%" debounce={skipAnimation ? 0 : 100}>
+              <RadarChart data={data.radarData} margin={{ top: 0, right: 0, bottom: 0, left: 0 }}>
+                <PolarGrid stroke="var(--border)" />
+                <PolarAngleAxis dataKey="subject"
+                  tick={{ fontSize: 11, fill: "var(--text-muted)" }} />
+                <PolarRadiusAxis domain={[0,100]} tick={false} axisLine={false} />
+                <Radar name="Score" dataKey="A" stroke="#6366f1" fill="#6366f1"
+                  fillOpacity={0.2} strokeWidth={2} dot={{ r: 4, fill: "#6366f1" }}
+                  isAnimationActive={!skipAnimation} />
+              </RadarChart>
+            </ResponsiveContainer>
+          </div>
         </div>
 
-        <div style={{ background: "var(--card-bg)", borderRadius: 16,
-          padding: 24, boxShadow: "var(--card-shadow)" }}>
+        <div style={{
+          background: "var(--card-bg)", borderRadius: 16,
+          padding: 24, boxShadow: "var(--card-shadow)", minHeight: 340,
+          display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", textAlign: "center"
+        }}>
           <h3 style={{ fontFamily: "'Syne',sans-serif", fontWeight: 700,
             fontSize: 15, marginBottom: 4, color: "var(--text-primary)" }}>Score Breakdown</h3>
           <p style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 16 }}>
             All four scores from your analysis
           </p>
-          <ResponsiveContainer width="100%" height={220}>
-            <BarChart
-              data={[
-                { label: "ATS",         score: data.atsScore         || 0 },
-                { label: "Readability", score: data.readabilityScore || 0 },
-                { label: "Impact",      score: data.impactScore      || 0 },
-                { label: "Overall",     score: data.overallScore     || 0 },
-              ]}
-              barCategoryGap="30%"
-            >
-              <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} />
-              <XAxis dataKey="label"
-                tick={{ fontSize: 11, fill: "var(--text-muted)" }} axisLine={false} tickLine={false} />
-              <YAxis domain={[0, 100]}
-                tick={{ fontSize: 11, fill: "var(--text-muted)" }} axisLine={false} tickLine={false} />
-              <Tooltip
-                cursor={{ fill: "rgba(99,102,241,0.07)" }}
-                contentStyle={{
-                  borderRadius: 10, border: "1px solid var(--border)",
-                  background: "var(--card-bg)", color: "var(--text-primary)", fontSize: 13
-                }}
-                formatter={(val) => [`${val}/100`, "Score"]}
-              />
-              <Bar dataKey="score" radius={[6, 6, 0, 0]}>
-                {[
-                  data.atsScore         || 0,
-                  data.readabilityScore || 0,
-                  data.impactScore      || 0,
-                  data.overallScore     || 0,
-                ].map((score, i) => (
-                  <Cell key={i} fill={scoreColor(score)} />
-                ))}
-              </Bar>
-            </BarChart>
-          </ResponsiveContainer>
+          <div style={{ width: 320, height: 240, margin: "0 auto" }}>
+            <ResponsiveContainer width="100%" height="100%" debounce={skipAnimation ? 0 : 100}>
+              <BarChart
+                data={[
+                  { label: "ATS",         score: data.atsScore         || 0 },
+                  { label: "Readability", score: data.readabilityScore || 0 },
+                  { label: "Impact",      score: data.impactScore      || 0 },
+                  { label: "Overall",     score: data.overallScore     || 0 },
+                ]}
+                barCategoryGap="30%"
+                margin={{ top: 10, right: 10, bottom: 0, left: -20 }}
+              >
+                <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} />
+                <XAxis dataKey="label"
+                  tick={{ fontSize: 11, fill: "var(--text-muted)" }} axisLine={false} tickLine={false} />
+                <YAxis domain={[0, 100]}
+                  tick={{ fontSize: 11, fill: "var(--text-muted)" }} axisLine={false} tickLine={false} />
+                <Tooltip
+                  cursor={{ fill: "rgba(99,102,241,0.07)" }}
+                  contentStyle={{
+                    borderRadius: 10, border: "1px solid var(--border)",
+                    background: "var(--card-bg)", color: "var(--text-primary)", fontSize: 13
+                  }}
+                  formatter={(val) => [`${val}/100`, "Score"]}
+                />
+                <Bar dataKey="score" radius={[6, 6, 0, 0]} isAnimationActive={!skipAnimation}>
+                  {[
+                    data.atsScore         || 0,
+                    data.readabilityScore || 0,
+                    data.impactScore      || 0,
+                    data.overallScore     || 0,
+                  ].map((score, i) => (
+                    <Cell key={i} fill={scoreColor(score)} />
+                  ))}
+                </Bar>
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
         </div>
       </div>
     </div>

@@ -11,6 +11,7 @@ import ScoreHistory, { saveToHistory } from "../ui/ScoreHistory";
 import Confetti                     from "../ui/Confetti";
 import ResumePreview                from "../ui/ResumePreview";
 import JDMatcher                    from "../ui/JDMatcher";
+import FullReport                   from "../ui/FullReport";
 import { mockAnalysis }             from "../../data/mockData";
 import useMediaQuery                from "../../hooks/useMediaQuery";
 
@@ -24,7 +25,17 @@ const Dashboard = ({ analysis, file, onReset }) => {
   const [tab,      setTab]      = useState("overview");
   const [showTour, setShowTour] = useState(false);
   const [confetti, setConfetti] = useState(false);
+  const [isPrintingFull, setIsPrintingFull] = useState(false);
   const isMobile = useMediaQuery("(max-width: 768px)");
+
+  const handleFullReport = () => {
+    setIsPrintingFull(true);
+    // Use a timeout to ensure state is updated before printing
+    setTimeout(() => {
+      window.print();
+      setIsPrintingFull(false);
+    }, 100);
+  };
 
   // Save to history on mount
   useEffect(() => { saveToHistory(data); }, []);
@@ -52,6 +63,7 @@ const Dashboard = ({ analysis, file, onReset }) => {
     overview: <OverviewTab    data={data} />,
     ats:      <ATSTab         data={data} />,
     skills:   <SkillsTab      data={data} />,
+    matcher:  <JDMatcher      file={file} />,
     issues:   <IssuesTab      data={data} />,
     suggest:  <SuggestionsTab data={data} />,
   };
@@ -65,62 +77,65 @@ const Dashboard = ({ analysis, file, onReset }) => {
         padding: isMobile ? "76px 16px 32px" : "36px 40px",
         overflowY: "auto", minHeight: "100vh", transition: "background .3s"
       }}>
-        {/* ── Top Bar ── */}
-        <div style={{
-          display: "flex", justifyContent: "space-between",
-          alignItems: "center", marginBottom: 24, flexWrap: "wrap", gap: 12
-        }}>
-          <div>
-            <h1 style={{ fontFamily: "'Syne',sans-serif", fontWeight: 800,
-              fontSize: isMobile ? 20 : 24, color: "var(--text-primary)", marginBottom: 2 }}>
-              {navItems.find(n => n.id === tab)?.label}
-            </h1>
-            <p style={{ color: "var(--text-muted)", fontSize: 13 }}>
-              {analysis ? `Analysed: ${data.name}` : "Demo mode — upload a real resume to get started"}
-              {" · "}
-              {new Date().toLocaleDateString("en-GB", {
-                day: "numeric", month: "short", year: "numeric"
-              })}
-            </p>
-          </div>
+        <div className={isPrintingFull ? "no-print" : ""}>
+          {/* ── Top Bar ── */}
+          <div style={{
+            display: "flex", justifyContent: "space-between",
+            alignItems: "center", marginBottom: 24, flexWrap: "wrap", gap: 12
+          }}>
+            <div>
+              <h1 style={{ fontFamily: "'Syne',sans-serif", fontWeight: 800,
+                fontSize: isMobile ? 20 : 24, color: "var(--text-primary)", marginBottom: 2 }}>
+                {navItems.find(n => n.id === tab)?.label}
+              </h1>
+              <p style={{ color: "var(--text-muted)", fontSize: 13 }}>
+                {analysis ? `Analysed: ${data.name}` : "Demo mode — upload a real resume to get started"}
+                {" · "}
+                {new Date().toLocaleDateString("en-GB", {
+                  day: "numeric", month: "short", year: "numeric"
+                })}
+              </p>
+            </div>
 
-          <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
-            <ScoreHistory currentScore={data.overallScore} />
-            <ResumePreview data={data} />
-            <button onClick={() => window.print()} style={{
-              display: "flex", alignItems: "center", gap: 6,
-              padding: "10px 18px", borderRadius: 12,
-              border: "1.5px solid var(--border)", background: "var(--card-bg)",
-              cursor: "pointer", color: "var(--text-primary)",
-              fontWeight: 600, fontSize: 13, boxShadow: "var(--card-shadow)"
-            }}>
-              <Download size={14} /> Export PDF
-            </button>
-            <button style={{
-              display: "flex", alignItems: "center", gap: 6,
-              padding: "10px 18px", borderRadius: 12, border: "none",
-              background: "linear-gradient(135deg,#6366f1,#8b5cf6)",
-              cursor: "pointer", color: "#fff", fontWeight: 600, fontSize: 13,
-              boxShadow: "0 4px 16px rgba(99,102,241,.3)"
-            }}>
-              <BookOpen size={14} /> Full Report
-            </button>
+            <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
+              <ScoreHistory currentScore={data.overallScore} />
+              <ResumePreview data={data} />
+              <button onClick={() => window.print()} style={{
+                display: "flex", alignItems: "center", gap: 6,
+                padding: "10px 18px", borderRadius: 12,
+                border: "1.5px solid var(--border)", background: "var(--card-bg)",
+                cursor: "pointer", color: "var(--text-primary)",
+                fontWeight: 600, fontSize: 13, boxShadow: "var(--card-shadow)"
+              }}>
+                <Download size={14} /> Export PDF
+              </button>
+              <button onClick={handleFullReport} style={{
+                display: "flex", alignItems: "center", gap: 6,
+                padding: "10px 18px", borderRadius: 12, border: "none",
+                background: "linear-gradient(135deg,#6366f1,#8b5cf6)",
+                cursor: "pointer", color: "#fff", fontWeight: 600, fontSize: 13,
+                boxShadow: "0 4px 16px rgba(99,102,241,.3)"
+              }}>
+                <BookOpen size={14} /> Full Report
+              </button>
+            </div>
           </div>
         </div>
 
-        {/* ── JD Matcher ── */}
-        <JDMatcher file={file} />
-
         {/* ── Tab Content ── */}
-        {tabContent[tab]}
+        <div className={isPrintingFull ? "no-print" : ""}>
+          {tabContent[tab]}
+        </div>
       </main>
+
+      <FullReport data={data} />
 
       <Confetti trigger={confetti} />
       {showTour && <OnboardingTour onDone={() => setShowTour(false)} />}
 
       <style>{`
         @media print {
-          aside, button { display: none !important; }
+          aside, button, .no-print { display: none !important; }
           main { padding: 0 !important; }
           body { background: white !important; }
         }
