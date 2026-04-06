@@ -52,9 +52,12 @@ app.use((err, req, res, next) => {
 
 /* ── Start ── */
 const server = app.listen(PORT, () => {
+  const provider = (process.env.AI_PROVIDER || "groq").toLowerCase();
   console.log(`\n🚀 Resume Analyser API running on http://localhost:${PORT}`);
   console.log(`📋 Health check: http://localhost:${PORT}/health`);
-  console.log(`🔑 Groq key: ${process.env.GROQ_API_KEY ? "✅ Loaded" : "❌ Missing — check .env"}\n`);
+  console.log(`🤖 Active Provider: ${provider === "gemini" ? "💎 Gemini" : "🦁 Groq"}`);
+  console.log(`🔑 Groq Key:   ${process.env.GROQ_API_KEY ? "✅ Loaded" : "❌ Missing"}`);
+  console.log(`🔑 Gemini Key: ${process.env.GEMINI_API_KEY ? "✅ Loaded" : "❌ Missing"}\n`);
 });
 
 /* Vision + PDF conversion can take several minutes */

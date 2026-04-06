@@ -94,7 +94,7 @@ const JDMatcher = ({ file }) => {
               marginBottom: 24
             }}>
               <p style={{ fontSize: 14, color: "var(--text-primary)", lineHeight: 1.6 }}>
-                Our Groq-powered AI will analyze your resume's visual layout and semantic content
+                Our AI-powered model will analyze your resume's visual layout and semantic content
                 against the job requirements below to identify hidden keyword gaps and
                 tailoring opportunities.
               </p>

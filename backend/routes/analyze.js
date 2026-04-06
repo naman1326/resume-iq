@@ -62,7 +62,7 @@ router.post(
       const resumeData = await parseFile(req.file);
       console.log(`✅ Converted ${resumeData.pageCount} page(s) to ${resumeData.format} images`);
 
-      console.log("🤖 Sending to Groq Vision...");
+      console.log("🤖 Sending to AI for analysis...");
       const analysis = await analyzeResume(resumeData);
       console.log(`✅ Analysis complete — Overall score: ${analysis.overallScore}`);
 

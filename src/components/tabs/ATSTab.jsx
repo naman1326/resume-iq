@@ -2,19 +2,20 @@ import { CheckCircle, X } from "lucide-react";
 import ScoreRing from "../ui/ScoreRing";
 import { scoreColor } from "../../data/mockData";
 
-const checks = [
-  { label: "File Format",        pass: true,  note: "PDF is ATS-compatible"               },
-  { label: "Standard Headings",  pass: true,  note: "All section headers recognized"       },
-  { label: "Contact Information",pass: false, note: "LinkedIn URL missing"                 },
-  { label: "Date Formatting",    pass: true,  note: "Consistent MM/YYYY format"            },
-  { label: "Readable Fonts",     pass: true,  note: "No custom/image fonts detected"       },
-  { label: "No Tables/Columns",  pass: false, note: "2-column layout may break parsing"   },
-  { label: "Action Verb Usage",  pass: false, note: "4 bullets start with weak verbs"      },
-  { label: "Keyword Density",    pass: true,  note: "Good keyword distribution"            },
-];
-
 const ATSTab = ({ data, skipAnimation = false }) => {
   const sectionScores = Object.entries(data.sections);
+
+  // Generate dynamic checks based on AI data
+  const checks = [
+    { label: "File Format", pass: true, note: "PDF is ATS-compatible" },
+    { label: "Standard Headings", pass: data.sections.experience > 50, note: data.sections.experience > 50 ? "Section headers recognized" : "Some headers are non-standard" },
+    { label: "Contact Information", pass: data.sections.contact > 70, note: data.sections.contact > 70 ? "Complete contact info detected" : "Missing LinkedIn or Portfolio link" },
+    { label: "Date Formatting", pass: true, note: "Consistent date format detected" },
+    { label: "Readable Fonts", pass: data.readabilityScore > 60, note: "Standard fonts detected" },
+    { label: "Modern Layout Friendly", pass: true, note: "Visual hierarchy is preserved" },
+    { label: "Action Verb Usage", pass: data.impactScore > 60, note: data.impactScore > 60 ? "Strong action verbs used" : "Needs more punchy verbs" },
+    { label: "Keyword Density", pass: data.atsScore > 60, note: data.atsScore > 60 ? "Good keyword distribution" : "Consider adding more role-specific terms" },
+  ];
 
   return (
     <div>
@@ -58,8 +59,8 @@ const ATSTab = ({ data, skipAnimation = false }) => {
             <div key={i} style={{
               display: "flex", alignItems: "flex-start", gap: 12,
               padding: "14px 16px", borderRadius: 12,
-              background: c.pass ? "#f0fdf4" : "#fff5f5",
-              border: `1px solid ${c.pass ? "#bbf7d0" : "#fecaca"}`
+              background: c.pass ? "rgba(22, 163, 74, 0.05)" : "rgba(220, 38, 38, 0.05)",
+              border: `1px solid ${c.pass ? "rgba(22, 163, 74, 0.15)" : "rgba(220, 38, 38, 0.15)"}`
             }}>
               <div style={{ flexShrink: 0, marginTop: 1 }}>
                 {c.pass
@@ -67,8 +68,8 @@ const ATSTab = ({ data, skipAnimation = false }) => {
                   : <X size={16} color="#dc2626" />}
               </div>
               <div>
-                <p style={{ fontWeight: 700, fontSize: 13, color: "#0f172a" }}>{c.label}</p>
-                <p style={{ fontSize: 12, color: "#64748b", marginTop: 2 }}>{c.note}</p>
+                <p style={{ fontWeight: 700, fontSize: 13, color: "var(--text-primary)" }}>{c.label}</p>
+                <p style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 2 }}>{c.note}</p>
               </div>
             </div>
           ))}

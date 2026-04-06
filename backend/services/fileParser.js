@@ -3,144 +3,119 @@ import sharp from "sharp";
 
 const require = createRequire(import.meta.url);
 const pdfParse = require("pdf-parse");
+const mammoth = require("mammoth");
 const { pdfToPng } = require("pdf-to-png-converter");
 
-/** Groq: base64-encoded image must be ≤ 4MB per image (see console.groq.com/docs/vision). */
-const GROQ_MAX_B64_CHARS = 4 * 1024 * 1024;
+/** 
+ * Max size for base64 encoded images.
+ * Gemini handles up to 20MB, but we'll cap at 15MB for stability.
+ */
+const MAX_B64_SIZE = 15 * 1024 * 1024;
 
 /**
- * Resize + JPEG so each page stays under Groq’s per-image base64 limit.
- * @param {Buffer} inputBuffer — raw image bytes (PNG/JPEG/etc.)
+ * Resize + JPEG optimization for high clarity.
  */
-async function encodeImageForGroq(inputBuffer) {
-  let width = 1400;
-  let quality = 82;
-  for (let attempt = 0; attempt < 14; attempt++) {
+async function encodeImage(inputBuffer) {
+  let width = 2400; 
+  let quality = 90;
+  
+  for (let attempt = 0; attempt < 10; attempt++) {
     const out = await sharp(inputBuffer)
       .rotate()
-      .resize(width, 2000, { fit: "inside", withoutEnlargement: true })
-      .jpeg({ quality, mozjpeg: true })
+      .resize(width, 3200, { fit: "inside", withoutEnlargement: true })
+      .sharpen({ sigma: 1, m1: 2, j1: 2 }) 
+      .jpeg({ quality, mozjpeg: true, progressive: true })
       .toBuffer();
+      
     const b64 = out.toString("base64");
-    if (b64.length <= GROQ_MAX_B64_CHARS) {
+    if (b64.length <= MAX_B64_SIZE) {
       return { base64: b64, mimeType: "image/jpeg" };
     }
-    if (quality > 52) quality -= 6;
-    else width = Math.round(width * 0.82);
+    quality -= 10;
+    width = Math.round(width * 0.8);
   }
-  throw new Error(
-    "A resume page is still too large after compression (API limit 4MB per image). " +
-      "Try a shorter resume, fewer pages, or upload a JPEG/PNG export instead."
-  );
+  throw new Error("Failed to compress image while maintaining readability.");
 }
 
 /**
- * Converts an uploaded resume to vision-ready images (base64 + MIME for Groq).
- * Supports PDF, DOC, DOCX, and raster images (PNG/JPEG/WebP) for scanned resumes.
- *
- * @param {Express.Multer.File} file
- * @returns {Promise<{ images: Array<{ base64: string, mimeType: string }>, format: string, pageCount: number }>}
+ * Converts an uploaded resume to vision-ready images + extracted text.
  */
 export const parseFile = async (file) => {
   const ext = file.originalname.split(".").pop().toLowerCase();
+  let result;
 
   if (ext === "pdf") {
-    return await parsePDF(file.buffer);
+    result = await parsePDF(file.buffer);
+  } else if (ext === "docx" || ext === "doc") {
+    result = await parseDOCX(file.buffer);
+  } else if (["png", "jpg", "jpeg", "webp"].includes(ext)) {
+    result = await parseRasterImage(file.buffer, ext);
+  } else {
+    throw new Error(`Unsupported file extension: .${ext}`);
   }
 
-  if (ext === "docx" || ext === "doc") {
-    return await parseDOCX(file.buffer);
-  }
-
-  if (["png", "jpg", "jpeg", "webp"].includes(ext)) {
-    return await parseRasterImage(file.buffer, ext);
-  }
-
-  throw new Error(`Unsupported file extension: .${ext}`);
+  return { 
+    ...result, 
+    rawBuffer: file.buffer, 
+    mimeType: file.mimetype 
+  };
 };
 
-/* ── PDF (no GraphicsMagick — uses pdf.js via pdf-to-png-converter) ── */
+/* ── PDF Processing (High Res + Text Extraction) ── */
 const parsePDF = async (buffer) => {
-  const safeMsg = (err) => (err && typeof err.message === "string" ? err.message : String(err));
-
   try {
     const pdfMeta = await pdfParse(buffer);
+    const fullText = pdfMeta.text || "";
     const pageCount = pdfMeta.numpages || 0;
 
-    if (pageCount === 0) {
-      throw new Error("PDF appears to be empty or corrupted.");
-    }
-
-    if (pageCount > 5) {
-      throw new Error("Resume is too long. Maximum 5 pages allowed.");
-    }
+    if (pageCount === 0) throw new Error("PDF is empty.");
+    if (pageCount > 5) throw new Error("Maximum 5 pages allowed.");
 
     const pagesToProcess = Array.from({ length: pageCount }, (_, i) => i + 1);
     const pngPages = await pdfToPng(buffer, {
       returnPageContent: true,
-      viewportScale: 1.6,
+      viewportScale: 2.5, 
       pagesToProcess,
       verbosityLevel: 0,
     });
 
     const images = [];
     for (const page of pngPages) {
-      if (!page.content?.length) {
-        throw new Error(`Failed to render PDF page ${page.pageNumber}.`);
-      }
-      images.push(await encodeImageForGroq(page.content));
+      images.push(await encodeImage(page.content));
     }
 
-    console.log(`  Rendered ${pageCount} PDF page(s) → JPEG for Groq`);
-    return { images, format: "pdf", pageCount };
+    console.log(`  Rendered ${pageCount} PDF page(s) + Extracted Text`);
+    return { images, fullText, format: "pdf", pageCount };
   } catch (err) {
-    const msg = safeMsg(err);
-    if (msg.includes("empty") || msg.includes("corrupted")) {
-      throw err instanceof Error ? err : new Error(msg);
-    }
-    throw new Error(
-      `Failed to parse PDF: ${msg}. If this keeps happening, export as PNG or JPEG and upload that instead.`
-    );
+    throw new Error(`PDF parsing failed: ${err.message}`);
   }
 };
 
-/* ── Scanned image (PNG / JPEG / WebP) ── */
+/* ── Raster Images ── */
 const parseRasterImage = async (buffer, formatLabel) => {
-  try {
-    const encoded = await encodeImageForGroq(buffer);
-    console.log(`  Raster (.${formatLabel}) → JPEG for Groq (${(encoded.base64.length / 1024).toFixed(1)} KB base64)`);
-    return {
-      images: [encoded],
-      format: formatLabel,
-      pageCount: 1,
-    };
-  } catch (err) {
-    throw new Error(`Could not read image file: ${err.message}`);
-  }
+  const encoded = await encodeImage(buffer);
+  return {
+    images: [encoded],
+    fullText: "[Scanned Image - No direct text layer]",
+    format: formatLabel,
+    pageCount: 1,
+  };
 };
 
-/* ── DOCX / DOC ── */
+/* ── DOCX ── */
 const parseDOCX = async (buffer) => {
   try {
-    // For DOCX files, we'll use sharp to convert to PNG
-    // Note: This requires the document to be renderable by sharp
-    // For better DOCX support, consider using libreoffice in production
-
-    // Attempt to convert using sharp (works for some formats)
-    // For full DOCX support, you'd need to convert via LibreOffice first
+    const { value: fullText } = await mammoth.extractRawText({ buffer });
+    
     const image = await sharp(buffer)
-      .resize(1200, 1600, { fit: "inside", withoutEnlargement: true })
-      .png()
+      .resize(2000, 2800, { fit: "inside", withoutEnlargement: true })
+      .jpeg({ quality: 90 })
       .toBuffer();
 
-    const encoded = await encodeImageForGroq(image);
-    console.log(`  Converted DOCX to 1 image (Groq-sized JPEG)`);
-    return { images: [encoded], format: "docx", pageCount: 1 };
+    const encoded = await encodeImage(image);
+    console.log(`  Extracted DOCX Text + Rendered Preview`);
+    return { images: [encoded], fullText, format: "docx", pageCount: 1 };
   } catch (err) {
-    // If sharp fails, DOCX files need LibreOffice conversion
-    throw new Error(
-      "DOCX conversion failed. For best results, please convert your DOCX to PDF first, " +
-      "or ensure LibreOffice is installed for full DOCX support."
-    );
+    throw new Error("DOCX conversion failed. Please use PDF for better visual analysis.");
   }
 };

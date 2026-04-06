@@ -1,227 +1,192 @@
 import Groq from "groq-sdk";
+import { GoogleGenerativeAI } from "@google/generative-ai";
 
 const buildVisionPrompt = () => `
-You are an expert resume analyst and career coach with expertise in visual design, layout, and ATS compatibility.
+You are a World-Class Resume Analyst and Career Coach with expertise in visual design, layout, and ATS compatibility.
+Your goal is to provide a deep, high-fidelity analysis of the provided resume.
 
-Analyse the resume image(s) below and return ONLY a valid JSON object.
-No markdown, no explanation, no extra text. Just raw JSON.
+--- ANALYSIS INSTRUCTIONS ---
+1. CROSS-REFERENCE: Use the provided "DOCUMENT TEXT LAYER" for 100% accurate extraction of contact info, links (LinkedIn, GitHub, Portfolio), and specific technical keywords. The image(s) are for analyzing layout, hierarchy, and visual polish.
+2. BE CRITICAL: Avoid score inflation. A "good" resume is 70-80. A "perfect" resume is 90+. 
+3. LINK DETECTION: Ensure you extract ALL URLs present in the text layer. If a link is present but doesn't work or is poorly formatted, mark it as an issue.
+4. ATS CHECKLIST: Evaluate if the design is modern but ATS-friendly. Note that our system handles columns and tables, so ONLY penalize if the visual hierarchy is confusing or fonts are unreadable.
 
-The JSON must follow this EXACT structure:
+--- JSON SCHEMA ---
 {
   "name": "Full name from resume",
-  "role": "Most recent job title or target role",
-  "overallScore": <integer 0-100>,
-  "atsScore": <integer 0-100>,
-  "readabilityScore": <integer 0-100>,
-  "impactScore": <integer 0-100>,
+  "role": "Current or target role",
+  "overallScore": 0-100,
+  "atsScore": 0-100,
+  "readabilityScore": 0-100,
+  "impactScore": 0-100,
   "sections": {
-    "contact":      <integer 0-100>,
-    "summary":      <integer 0-100>,
-    "experience":   <integer 0-100>,
-    "skills":       <integer 0-100>,
-    "education":    <integer 0-100>,
-    "achievements": <integer 0-100>
+    "contact":      0-100,
+    "summary":      0-100,
+    "experience":   0-100,
+    "skills":       0-100,
+    "education":    0-100,
+    "achievements": 0-100
   },
   "radarData": [
-    { "subject": "ATS Match",  "A": <integer 0-100> },
-    { "subject": "Keywords",   "A": <integer 0-100> },
-    { "subject": "Formatting", "A": <integer 0-100> },
-    { "subject": "Impact",     "A": <integer 0-100> },
-    { "subject": "Clarity",    "A": <integer 0-100> },
-    { "subject": "Length",     "A": <integer 0-100> }
+    { "subject": "ATS Match",  "A": 0-100 },
+    { "subject": "Keywords",   "A": 0-100 },
+    { "subject": "Formatting", "A": 0-100 },
+    { "subject": "Impact",     "A": 0-100 },
+    { "subject": "Clarity",    "A": 0-100 },
+    { "subject": "Length",     "A": 0-100 }
   ],
   "skills": {
-    "matched": ["skill1", "skill2"],
-    "missing": ["skill1", "skill2"],
-    "bonus":   ["skill1", "skill2"]
+    "matched": ["tech1", "tech2"],
+    "missing": ["suggested_tech1"],
+    "bonus":   ["extra_value_skill"]
   },
   "issues": [
     {
       "type": "error|warn|info",
-      "text": "Explanation of the issue and how to fix it",
-      "quote": "Copy the EXACT text from the resume that has this issue. If the issue is about visual formatting/layout with no specific text, use empty string.",
-      "page": <integer: 1-based page index in the image set where this issue is most visible; use 1 for single-page or whole-document issues>
+      "text": "Detailed explanation of the issue",
+      "quote": "EXACT text string from the resume for highlighting",
+      "page": 1
     }
   ],
   "suggestions": [
-    { "tag": "HIGH", "title": "Short title", "body": "Detailed actionable suggestion 2-3 sentences", "page": <integer 1-based: which page this applies to most> },
-    { "tag": "MED",  "title": "Short title", "body": "Detailed actionable suggestion 2-3 sentences", "page": <integer> },
-    { "tag": "LOW",  "title": "Short title", "body": "Detailed actionable suggestion 2-3 sentences", "page": <integer> }
+    { "tag": "HIGH|MED|LOW", "title": "Short title", "body": "Detailed actionable fix", "page": 1 }
   ]
 }
 
-SCORING RULES (IMPORTANT):
-- Use the FULL 0-100 range; do not cluster around 70-85.
-- Scores MUST differ meaningfully between resumes based on evidence in the image.
-- Base the final scores on the rubric below. If a resume is missing key info, deduct aggressively.
-- Prefer precision over politeness: if it's weak, score it low.
-- Use integers only.
-
-RUBRIC (anchor your scoring to these bands):
-1) CONTACT (0-100)
-   - 0-20: No clear contact details (email/phone/location) or unreadable
-   - 40-60: Some present but missing key items (location/links) or inconsistent formatting
-   - 80-100: Clean, complete (email, phone, city/country, LinkedIn/portfolio if relevant)
-
-2) SUMMARY (0-100)
-   - 0-20: Missing OR generic ("hard-working team player") with no specifics
-   - 40-60: Exists but light on scope, domain, measurable outcomes
-   - 80-100: Clear target role + strengths + domain + quantified impact or credible proof
-
-3) EXPERIENCE (0-100)
-   - 0-20: Missing OR responsibilities only, no outcomes
-   - 40-60: Some outcomes but vague, few metrics, unclear scope/tech
-   - 80-100: Strong action+impact bullets, quantified, scope clear, progression demonstrated
-
-4) SKILLS (0-100)
-   - 0-20: Missing OR very thin/unstructured
-   - 40-60: Present but not tailored; mixes tools with soft skills; no grouping
-   - 80-100: Grouped, role-relevant, matches experience claims, avoids keyword stuffing
-
-5) EDUCATION (0-100)
-   - 0-20: Missing when expected OR unclear institution/dates
-   - 40-60: Present but incomplete (no dates/degree/major) or oddly formatted
-   - 80-100: Complete, concise, relevant highlights only
-
-6) ACHIEVEMENTS (0-100)
-   - 0-20: None and no measurable wins elsewhere
-   - 40-60: Some wins but weak specificity
-   - 80-100: Clear awards/recognition/projects with measurable results
-
-DERIVED SCORES:
-- atsScore: Estimate how well this resume would pass an ATS for the MOST LIKELY target role inferred from the resume. Consider keyword alignment, sectioning, dates, parsing friendliness, consistency, AND visual layout (ATS-unfriendly designs like two-column layouts, graphics, icons, progress bars should be penalized).
-- readabilityScore: Clarity, structure, scannability, formatting consistency, length appropriateness, AND visual hierarchy (font sizes, spacing, white space, contrast).
-- impactScore: Strength of outcomes, metrics, scope, leadership, and evidence of value created.
-- overallScore: Weighted average (approx): experience 35%, skills 15%, ats 20%, readability 15%, impact 15%. If experience is missing/weak, overall must drop substantially.
-
-VISUAL/DESIGN EVALUATION (NEW - analyze what you see in the image):
-- Evaluate typography choices (font selection, sizes, consistency)
-- Assess layout quality (alignment, spacing, white space usage)
-- Check for ATS-hostile elements: two-column layouts, graphics, icons, progress bars, tables, text in images
-- Evaluate visual hierarchy (is the most important info most prominent?)
-- Assess color usage (professional vs distracting)
-- Check density (too much text crammed together vs well-spaced)
-- Note any design choices that hurt readability or ATS parsing
-
-CONSISTENCY CHECKS (avoid inflated scores):
-- If there are NO numbers/metrics anywhere in experience/projects, cap impactScore at 65 unless role truly doesn't use metrics (rare).
-- If experience section is missing, overallScore must be <= 45.
-- If resume is extremely short (< ~1500 chars equivalent) and lacks depth, cap overallScore at 60.
-- If resume has clear red flags (typos, broken grammar, contradictory dates), deduct 10-30 points across relevant categories.
-- If resume uses two-column layout, reduce atsScore by 15-25 points (most ATS parsers struggle with columns).
-- If resume uses graphics/icons/progress bars for skills, reduce atsScore by 10-20 points.
-
-IMPORTANT for "page" fields (images are sent in order — page 1 is the first image):
-- For each issue and suggestion, set "page" to the 1-based index of the image where the problem or fix is most relevant (1 = first page). If unsure, use 1. For multi-page resumes, put contact/header issues on page 1, later sections on later pages when visible there.
-
-IMPORTANT for issues:
-- The "quote" field must be copied EXACTLY from the resume text word for word
-- It should be the specific sentence, bullet point, or phrase that has the problem
-- This is used to highlight that exact line in the resume preview
-- Keep the quote short — just the problematic part, not entire paragraphs
-- If it is a general issue (like missing LinkedIn or poor layout), use empty string "" for quote
-- Include visual/design issues: "Two-column layout may confuse ATS parsers", "Skill progress bars are not ATS-friendly", etc.
-
-ISSUES + SUGGESTIONS QUALITY BAR:
-- Provide 6-12 issues total. Mix of error/warn/info. Avoid generic advice.
-- Every issue MUST be tied to a specific weakness visible in the resume. Use "quote" whenever possible.
-- Include at least 2-3 visual/design-related issues if applicable.
-- Provide 6-10 suggestions. Make them highly actionable and tailored to the inferred target role.
-- Use the resume's own phrasing and facts; do NOT invent employers, degrees, certifications, or metrics. If metrics are missing, suggest adding them (do NOT fabricate).
-
-Analyze the resume image(s) below:`;
+IMPORTANT: Output ONLY raw JSON. No markdown.`;
 
 const validateResponse = (data, pageCount = 1) => {
-  const required = [
-    "name", "role", "overallScore", "atsScore",
-    "readabilityScore", "impactScore", "sections",
-    "radarData", "skills", "issues", "suggestions"
-  ];
-  const missing = required.filter((k) => !(k in data));
-  if (missing.length > 0) {
-    throw new Error(`AI response missing fields: ${missing.join(", ")}. Please try again.`);
-  }
+  const required = ["name", "overallScore", "atsScore", "sections", "issues", "suggestions"];
+  required.forEach(k => { if (!(k in data)) throw new Error(`Missing field: ${k}`); });
   const clamp = (v) => Math.max(0, Math.min(100, Math.round(Number(v) || 0)));
-  const pc = Math.max(1, Math.min(50, Math.round(Number(pageCount) || 1)));
-  const clampPage = (p) => {
-    const n = Math.round(Number(p));
-    if (Number.isNaN(n) || n < 1) return 1;
-    return Math.min(n, pc);
-  };
-
-  data.overallScore     = clamp(data.overallScore);
-  data.atsScore         = clamp(data.atsScore);
-  data.readabilityScore = clamp(data.readabilityScore);
-  data.impactScore      = clamp(data.impactScore);
-  Object.keys(data.sections).forEach((k) => { data.sections[k] = clamp(data.sections[k]); });
-  data.radarData = data.radarData.map((r) => ({ subject: r.subject, A: clamp(r.A) }));
-  data.issues = data.issues.map((i) => ({
-    ...i,
-    quote: i.quote || "",
-    page: clampPage(i.page),
+  data.overallScore = clamp(data.overallScore);
+  data.atsScore = clamp(data.atsScore);
+  data.issues = (data.issues || []).map(i => ({ 
+    ...i, 
+    page: Math.min(Math.max(1, i.page || 1), pageCount),
+    quote: i.quote || "" 
   }));
-  data.suggestions = (data.suggestions || []).map((s) => ({
+  data.suggestions = (data.suggestions || []).map(s => ({
     ...s,
-    page: clampPage(s.page),
+    page: Math.min(Math.max(1, s.page || 1), pageCount)
   }));
 };
 
 const buildJDMatchPrompt = (jdText) => `
-You are an expert technical recruiter and ATS specialist.
-Analyze the provided resume image(s) against this Job Description:
+You are a Senior Technical Recruiter. Perform a surgical match analysis.
 
 --- JOB DESCRIPTION ---
 ${jdText}
----
 
-Return ONLY a valid JSON object with this structure:
+--- INSTRUCTIONS ---
+1. Identify the CORE 5 requirements from the JD.
+2. Search the resume's text layer and images for specific evidence of these requirements.
+3. If the candidate has the skill but not enough YEARS of experience as requested, score the Technical Match high but the Experience Match lower.
+4. Provide highly specific adjustments like "Rewrite your 'Senior Developer' bullet #3 to include 'Kubernetes cluster management' to match the JD's focus."
+
+Return ONLY JSON:
 {
-  "matchScore": <integer 0-100>,
-  "explanation": "1-2 sentence summary of the fit",
-  "keywords": {
-    "matched": ["skill1", "skill2"],
-    "missing": ["skill1", "skill2"]
+  "matchScore": 0-100,
+  "explanation": "Detailed 3-4 sentence analysis",
+  "analysis": {
+    "technicalMatch": 0-100,
+    "experienceMatch": 0-100,
+    "educationMatch": 0-100,
+    "softSkillsMatch": 0-100
   },
+  "keywords": { "matched": [], "missing": [], "bonus": [] },
   "adjustments": [
-    {
-      "title": "Short title of adjustment",
-      "suggestion": "Specific instructions on what to add/change",
-      "location": "Which section (Experience, Skills, Summary) to modify",
-      "priority": "HIGH|MED|LOW"
-    }
+    { "title": "...", "suggestion": "...", "location": "...", "priority": "HIGH|MED|LOW" }
   ]
-}
+}`;
 
-Rules:
-1. Be realistic. If the resume is for a junior and the JD is for a lead, the score should reflect that.
-2. Suggestions must be actionable (e.g., "Add 'Kubernetes' to your TechCorp experience bullets").
-3. No markdown or extra text.`;
+const analyzeWithGemini = async (resumeData) => {
+  const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+  const modelName = process.env.GEMINI_MODEL || "gemini-2.5-flash";
+  const model = genAI.getGenerativeModel({ model: modelName });
 
-export const matchJobDescription = async (resumeData, jdText) => {
-  if (!process.env.GROQ_API_KEY) throw new Error("GROQ_API_KEY missing.");
-  const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
+  const combinedPrompt = `DOCUMENT TEXT LAYER:\n${resumeData.fullText}\n\n${buildVisionPrompt()}`;
 
-  const toDataUrl = (img) => {
-    const mime = img.mimeType || "image/png";
-    return { type: "image_url", image_url: { url: `data:${mime};base64,${img.base64}` } };
-  };
+  let parts = [{ text: combinedPrompt }];
+  if (resumeData.format === "pdf" && resumeData.rawBuffer) {
+    parts.push({ inlineData: { data: resumeData.rawBuffer.toString("base64"), mimeType: "application/pdf" } });
+  } else {
+    resumeData.images.forEach(img => {
+      parts.push({ inlineData: { data: img.base64, mimeType: "image/jpeg" } });
+    });
+  }
 
-  const imageContent = resumeData.images.map(img => toDataUrl(img));
-  const model = process.env.GROQ_VISION_MODEL || "meta-llama/llama-4-scout-17b-16e-instruct";
+  const result = await model.generateContent(parts);
+  const response = await result.response;
+  let text = response.text();
+  text = text.replace(/```json\n?|```/g, "").trim();
+  const parsed = JSON.parse(text);
+  validateResponse(parsed, resumeData.pageCount || 1);
+  return parsed;
+};
+
+const analyzeWithGroq = async (resumeData, groq) => {
+  const toDataUrl = (img) => ({
+    type: "image_url",
+    image_url: { url: `data:${img.mimeType || "image/png"};base64,${img.base64}` }
+  });
 
   const response = await groq.chat.completions.create({
-    model,
+    model: process.env.GROQ_VISION_MODEL || "meta-llama/llama-4-scout-17b-16e-instruct",
     messages: [
-      {
-        role: "system",
-        content: "You are a precise resume-to-JD matching engine. Output ONLY valid JSON."
-      },
-      {
-        role: "user",
+      { role: "system", content: "You are a resume scoring engine. Output ONLY JSON." },
+      { 
+        role: "user", 
         content: [
-          { type: "text", text: buildJDMatchPrompt(jdText) },
-          ...imageContent
-        ]
+          { type: "text", text: `DOCUMENT TEXT LAYER:\n${resumeData.fullText}\n\n${buildVisionPrompt()}` }, 
+          ...resumeData.images.map(toDataUrl)
+        ] 
+      }
+    ],
+    temperature: 0.2,
+    response_format: { type: "json_object" },
+  });
+
+  const parsed = JSON.parse(response.choices[0]?.message?.content || "{}");
+  validateResponse(parsed, resumeData.pageCount || 1);
+  return parsed;
+};
+
+const matchWithGemini = async (resumeData, jdText) => {
+  const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+  const modelName = process.env.GEMINI_MODEL_FLASH || "gemini-2.5-flash";
+  const model = genAI.getGenerativeModel({ model: modelName });
+
+  let parts = [{ text: `DOCUMENT TEXT LAYER:\n${resumeData.fullText}\n\n${buildJDMatchPrompt(jdText)}` }];
+  if (resumeData.format === "pdf" && resumeData.rawBuffer) {
+    parts.push({ inlineData: { data: resumeData.rawBuffer.toString("base64"), mimeType: "application/pdf" } });
+  } else {
+    resumeData.images.forEach(img => {
+      parts.push({ inlineData: { data: img.base64, mimeType: "image/jpeg" } });
+    });
+  }
+
+  const result = await model.generateContent(parts);
+  const text = result.response.text().replace(/```json\n?|```/g, "").trim();
+  return JSON.parse(text);
+};
+
+const matchWithGroq = async (resumeData, jdText, groq) => {
+  const toDataUrl = (img) => ({
+    type: "image_url",
+    image_url: { url: `data:${img.mimeType || "image/png"};base64,${img.base64}` }
+  });
+
+  const response = await groq.chat.completions.create({
+    model: process.env.GROQ_VISION_MODEL || "meta-llama/llama-4-scout-17b-16e-instruct",
+    messages: [
+      { role: "system", content: "You are a JD matching engine. Output ONLY JSON." },
+      { 
+        role: "user", 
+        content: [
+          { type: "text", text: `DOCUMENT TEXT LAYER:\n${resumeData.fullText}\n\n${buildJDMatchPrompt(jdText)}` }, 
+          ...resumeData.images.map(toDataUrl)
+        ] 
       }
     ],
     temperature: 0.1,
@@ -232,67 +197,31 @@ export const matchJobDescription = async (resumeData, jdText) => {
 };
 
 export const analyzeResume = async (resumeData) => {
-  if (!process.env.GROQ_API_KEY) {
-    throw new Error("GROQ_API_KEY is not set in environment variables.");
-  }
-
+  const provider = (process.env.AI_PROVIDER || "groq").toLowerCase();
   const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
-
-  const toDataUrl = (img) => {
-    if (typeof img === "string") {
-      return { type: "image_url", image_url: { url: `data:image/png;base64,${img}` } };
-    }
-    const mime = img.mimeType || "image/png";
-    return {
-      type: "image_url",
-      image_url: { url: `data:${mime};base64,${img.base64}` },
-    };
-  };
-
-  const imageContent = resumeData.images.map((img) => toDataUrl(img));
-
-  let rawText = "";
-  try {
-    const model =
-      process.env.GROQ_VISION_MODEL || "meta-llama/llama-4-scout-17b-16e-instruct";
-
-    const response = await groq.chat.completions.create({
-      model,
-      messages: [
-        {
-          role: "system",
-          content:
-            "You are a strict, evidence-based resume scoring engine with expertise in visual design and ATS compatibility. Output ONLY a valid JSON object (no markdown, no code fences, no extra text). Follow the user's schema exactly. Use the full 0-100 scoring range and avoid score clustering by anchoring to the provided rubric. Never invent facts; if something is missing, penalize and recommend what to add. Evaluate both content AND visual presentation."
-        },
-        {
-          role: "user",
-          content: [
-            { type: "text", text: buildVisionPrompt() },
-            ...imageContent
-          ]
-        }
-      ],
-      temperature: 0.2,
-      max_completion_tokens: 4096,
-      response_format: { type: "json_object" },
-    });
-
-    rawText = response.choices[0]?.message?.content || "";
-    const parsed = JSON.parse(rawText);
-    validateResponse(parsed, resumeData.pageCount || 1);
-    return parsed;
-  } catch (err) {
-    if (err.message.includes("GROQ_API_KEY")) throw err;
-    if (err instanceof SyntaxError) {
-      console.error("Raw Groq response (invalid JSON):", rawText?.slice?.(0, 2000) || rawText);
-      throw new Error("AI returned invalid JSON. Please try again.");
-    }
-    const apiMsg =
-      err?.response?.data?.error?.message ||
-      err?.error?.message ||
-      err?.message ||
-      String(err);
-    throw new Error(`Groq error: ${apiMsg}`);
+  
+  if (provider === "gemini") {
+    const model = process.env.GEMINI_MODEL || "gemini-2.5-flash";
+    console.log(`💎 Attempting Gemini Analysis (Model: ${model})...`);
+    return await analyzeWithGemini(resumeData);
   }
+
+  const model = process.env.GROQ_VISION_MODEL || "meta-llama/llama-4-scout-17b-16e-instruct";
+  console.log(`🦁 Attempting Groq Analysis (Model: ${model})...`);
+  return await analyzeWithGroq(resumeData, groq);
 };
 
+export const matchJobDescription = async (resumeData, jdText) => {
+  const provider = (process.env.AI_PROVIDER || "groq").toLowerCase();
+  const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
+
+  if (provider === "gemini") {
+    const model = process.env.GEMINI_MODEL_FLASH || "gemini-2.5-flash";
+    console.log(`💎 Attempting Gemini JD Match (Model: ${model})...`);
+    return await matchWithGemini(resumeData, jdText);
+  }
+
+  const model = process.env.GROQ_VISION_MODEL || "meta-llama/llama-4-scout-17b-16e-instruct";
+  console.log(`🦁 Attempting Groq JD Match (Model: ${model})...`);
+  return await matchWithGroq(resumeData, jdText, groq);
+};
