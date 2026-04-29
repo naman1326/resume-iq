@@ -260,10 +260,10 @@ const Hero = ({ onGetStarted }) => {
 /* ════════ STATS ════════ */
 const Stats = () => {
   const stats = [
-    { value: 50000,  suffix: "+", label: "Resumes Analysed"    },
+    { value: 5000,   suffix: "+", label: "Resumes Analysed"    },
     { value: 94,     suffix: "%", label: "ATS Accuracy Rate"   },
     { value: 3,      suffix: "x", label: "More Interview Calls" },
-    { value: 30,     suffix: "s", label: "Average Scan Time"   },
+    { value: 15,     suffix: "s", label: "Average Scan Time"   },
   ];
 
   return (
@@ -727,7 +727,7 @@ const FAQ = () => {
     },
     {
       q: "How accurate is the ATS scoring?",
-      a: "Our model is trained on data from 50,000+ real job applications and achieves 94% accuracy against major ATS platforms like Workday, Greenhouse, and Lever."
+      a: "Our model is trained on data from 5,000+ real job applications and achieves 94% accuracy against major ATS platforms like Workday, Greenhouse, and Lever."
     },
     {
       q: "Do I need to create an account?",
@@ -811,7 +811,7 @@ const FinalCTA = ({ onGetStarted }) => (
           color: "rgba(255,255,255,0.45)", fontSize: 16, lineHeight: 1.7,
           maxWidth: 440, margin: "0 auto 40px"
         }}>
-          Join 50,000+ job seekers who have used Resume Analyser
+          Join 5,000+ job seekers who have used Resume Analyser
           to land roles at top companies.
         </p>
         <button onClick={onGetStarted} style={{

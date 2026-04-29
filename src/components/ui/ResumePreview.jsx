@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { FileText, X, Eye, EyeOff, AlertCircle, Info } from "lucide-react";
+import { FileText, X, Eye, EyeOff, AlertCircle, Info, Image, Lightbulb } from "lucide-react";
 import { scoreColor } from "../../data/mockData";
 
 /* ── Issue styles ── */
@@ -50,6 +50,68 @@ const isHeading = (line) => {
   return false;
 };
 
+const normPage = (p, fallback = 1) => {
+  const n = Number(p);
+  if (Number.isNaN(n) || n < 1) return fallback;
+  return n;
+};
+
+/* ── Compact overlays on scanned pages (vision) ── */
+const VisionOverlayIssue = ({ issue }) => {
+  const s = issueStyle[issue.type] || issueStyle.info;
+  const Icon = s.icon;
+  return (
+    <div style={{
+      display: "flex", gap: 8, alignItems: "flex-start",
+      padding: "8px 10px", borderRadius: 8,
+      background: "rgba(255,255,255,0.97)",
+      border: `1px solid ${s.border}`,
+      borderLeft: `3px solid ${s.color}`,
+      boxShadow: "0 2px 10px rgba(0,0,0,0.12)",
+    }}>
+      <Icon size={14} color={s.color} style={{ flexShrink: 0, marginTop: 1 }} />
+      <div style={{ minWidth: 0 }}>
+        <div style={{ fontSize: 10, fontWeight: 800, letterSpacing: 0.4, color: s.color, marginBottom: 3 }}>
+          {(issue.type || "info").toUpperCase()}
+        </div>
+        <div style={{ fontSize: 12, color: "#1e293b", lineHeight: 1.45 }}>{issue.text}</div>
+        {issue.quote ? (
+          <div style={{
+            fontSize: 11, color: "#64748b", marginTop: 5, lineHeight: 1.4,
+            borderLeft: "2px solid #e2e8f0", paddingLeft: 8, fontStyle: "italic",
+          }}>
+            “{issue.quote}”
+          </div>
+        ) : null}
+      </div>
+    </div>
+  );
+};
+
+const VisionOverlaySuggestion = ({ suggestion }) => {
+  const tag = String(suggestion.tag || "MED").toUpperCase();
+  const palette =
+    tag === "HIGH" ? { c: "#b91c1c", bg: "#fef2f2", b: "#fecaca" }
+    : tag === "LOW" ? { c: "#1d4ed8", bg: "#eff6ff", b: "#bfdbfe" }
+    : { c: "#b45309", bg: "#fffbeb", b: "#fde68a" };
+  return (
+    <div style={{
+      padding: "8px 10px", borderRadius: 8,
+      background: palette.bg,
+      border: `1px solid ${palette.b}`,
+      borderLeft: `3px solid ${palette.c}`,
+      boxShadow: "0 2px 10px rgba(0,0,0,0.08)",
+    }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap", marginBottom: 4 }}>
+        <Lightbulb size={13} color={palette.c} />
+        <span style={{ fontSize: 10, fontWeight: 800, color: palette.c }}>{tag}</span>
+        <span style={{ fontSize: 12, fontWeight: 700, color: "#0f172a" }}>{suggestion.title}</span>
+      </div>
+      <p style={{ fontSize: 11, color: "#475569", lineHeight: 1.45, margin: 0 }}>{suggestion.body}</p>
+    </div>
+  );
+};
+
 /* ── Annotation card ── */
 const AnnotationCard = ({ issue }) => {
   const s    = issueStyle[issue.type] || issueStyle.info;
@@ -81,11 +143,20 @@ const ResumePreview = ({ data }) => {
   const sectionScores = data?.sections  || {};
   const filename      = data?.name ? `${data.name}'s Resume` : "Uploaded Resume";
 
-  // Split resume text into lines
-  const lines = (data?.resumeText || "")
-    .split("\n")
-    .map(l => l.trim())
-    .filter(Boolean);
+  // Vision path: Groq analyzed images; optional previewImages = same JPEGs sent to the API
+  const isVisionAnalysis = data?.resumeText?.includes("[Vision analysis");
+  const previewImages =
+    Array.isArray(data?.previewImages) && data.previewImages.length > 0
+      ? data.previewImages
+      : [];
+
+  // Split resume text into lines (only if we have actual text)
+  const lines = isVisionAnalysis
+    ? []
+    : (data?.resumeText || "")
+        .split("\n")
+        .map(l => l.trim())
+        .filter(Boolean);
 
   // Issues WITH a quote (inline)
   const inlineIssues  = issues.filter(i => i.quote && i.quote.trim() !== "");
@@ -98,6 +169,16 @@ const ResumePreview = ({ data }) => {
   const errors   = issues.filter(i => i.type === "error");
   const warnings = issues.filter(i => i.type === "warn");
   const tips     = issues.filter(i => i.type === "info");
+  const suggestions = data?.suggestions || [];
+
+  const issuesForVisionPage = (idx) => {
+    const n = idx + 1;
+    return issues.filter((i) => normPage(i.page, 1) === n);
+  };
+  const suggestionsForVisionPage = (idx) => {
+    const n = idx + 1;
+    return suggestions.filter((s) => normPage(s.page, 1) === n);
+  };
 
   return (
     <>
@@ -157,9 +238,135 @@ const ResumePreview = ({ data }) => {
                 </button>
               </div>
 
-              {/* Resume body — line by line */}
+              {/* Resume body — scanned pages, line-by-line text, or vision message */}
               <div style={{ flex: 1, overflowY: "auto", padding: "32px 36px" }}>
-                {lines.length === 0 ? (
+                {isVisionAnalysis && previewImages.length > 0 ? (
+                  <div>
+                    <p style={{
+                      fontSize: 12, color: "#64748b", marginBottom: 20, lineHeight: 1.5,
+                      padding: "10px 14px", borderRadius: 10, background: "#f1f5f9",
+                      border: "1px solid #e2e8f0"
+                    }}>
+                      Same JPEGs sent to the model. Errors, warnings, and suggestions are overlaid at the bottom of each page (by AI-assigned page). Toggle “Annotations” in the header to hide overlays.
+                    </p>
+                    {previewImages.map((page, idx) => {
+                      const mime = page.mimeType || "image/jpeg";
+                      const src = `data:${mime};base64,${page.base64}`;
+                      const pageIssues = showAnnotations ? issuesForVisionPage(idx) : [];
+                      const pageSuggestions = showAnnotations ? suggestionsForVisionPage(idx) : [];
+                      const hasOverlay = pageIssues.length > 0 || pageSuggestions.length > 0;
+                      return (
+                        <div
+                          key={idx}
+                          style={{
+                            marginBottom: idx < previewImages.length - 1 ? 24 : 0,
+                            borderRadius: 12,
+                            overflow: "hidden",
+                            border: "1px solid #e2e8f0",
+                            boxShadow: "0 4px 24px rgba(15,23,42,0.08)",
+                            background: "#fff",
+                          }}
+                        >
+                          <div style={{
+                            padding: "8px 14px", fontSize: 11, fontWeight: 700,
+                            letterSpacing: 0.5, color: "#64748b",
+                            background: "#f8fafc", borderBottom: "1px solid #e2e8f0",
+                            display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8,
+                          }}>
+                            <span>Page {idx + 1} of {previewImages.length}</span>
+                            {showAnnotations && hasOverlay && (
+                              <span style={{ fontSize: 10, fontWeight: 600, color: "#6366f1" }}>
+                                {pageIssues.length} issue{pageIssues.length !== 1 ? "s" : ""}
+                                {pageSuggestions.length > 0
+                                  ? ` · ${pageSuggestions.length} suggestion${pageSuggestions.length !== 1 ? "s" : ""}`
+                                  : ""}
+                              </span>
+                            )}
+                          </div>
+                          <div style={{ position: "relative", lineHeight: 0 }}>
+                            <img
+                              src={src}
+                              alt={`Resume page ${idx + 1}`}
+                              style={{
+                                width: "100%",
+                                height: "auto",
+                                display: "block",
+                              }}
+                            />
+                            {showAnnotations && hasOverlay && (
+                              <div style={{
+                                position: "absolute",
+                                left: 0,
+                                right: 0,
+                                bottom: 0,
+                                maxHeight: "56%",
+                                overflowY: "auto",
+                                padding: "12px 8px 10px",
+                                background: "linear-gradient(to top, rgba(15,23,42,0.96) 0%, rgba(15,23,42,0.72) 45%, rgba(15,23,42,0.2) 85%, transparent 100%)",
+                                display: "flex",
+                                flexDirection: "column",
+                                gap: 8,
+                              }}>
+                                {pageIssues.length > 0 && (
+                                  <div style={{
+                                    fontSize: 10, fontWeight: 800, letterSpacing: 1.2,
+                                    color: "rgba(255,255,255,0.88)",
+                                  }}>
+                                    ISSUES
+                                  </div>
+                                )}
+                                {pageIssues.map((issue, j) => (
+                                  <VisionOverlayIssue key={`issue-${idx}-${j}`} issue={issue} />
+                                ))}
+                                {pageSuggestions.length > 0 && (
+                                  <div style={{
+                                    fontSize: 10, fontWeight: 800, letterSpacing: 1.2,
+                                    color: "rgba(255,255,255,0.88)",
+                                    marginTop: pageIssues.length ? 2 : 0,
+                                  }}>
+                                    FIXES & SUGGESTIONS
+                                  </div>
+                                )}
+                                {pageSuggestions.map((s, j) => (
+                                  <VisionOverlaySuggestion key={`sug-${idx}-${j}`} suggestion={s} />
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                ) : isVisionAnalysis ? (
+                  <div style={{ textAlign: "center", padding: "60px 20px" }}>
+                    <div style={{
+                      width: 80, height: 80, borderRadius: 20,
+                      background: "linear-gradient(135deg, #6366f1, #8b5cf6)",
+                      display: "flex", alignItems: "center", justifyContent: "center",
+                      margin: "0 auto 24px"
+                    }}>
+                      <Image size={40} color="#fff" />
+                    </div>
+                    <h3 style={{
+                      fontFamily: "'Syne',sans-serif", fontWeight: 700,
+                      fontSize: 18, color: "#0f172a", marginBottom: 8
+                    }}>
+                      Vision-Based Analysis
+                    </h3>
+                    <p style={{ color: "#64748b", fontSize: 14, maxWidth: 400, margin: "0 auto 16px", lineHeight: 1.6 }}>
+                      Your resume was analyzed as an image to preserve formatting, layout, and visual design cues. This ensures accurate detection of ATS-hostile elements and visual hierarchy issues.
+                    </p>
+                    <div style={{
+                      display: "inline-flex", alignItems: "center", gap: 8,
+                      padding: "8px 16px", borderRadius: 99,
+                      background: "#f1f5f9", fontSize: 12, color: "#64748b",
+                      fontWeight: 600
+                    }}>
+                      <Info size={14} />
+                      No preview images in this response
+                    </div>
+                  </div>
+                ) : lines.length === 0 ? (
                   <div style={{ textAlign: "center", padding: "60px 20px" }}>
                     <FileText size={40} color="#cbd5e1" style={{ marginBottom: 16 }} />
                     <p style={{ color: "#64748b", fontSize: 14 }}>
@@ -342,7 +549,9 @@ const ResumePreview = ({ data }) => {
                 </div>
 
                 <p style={{ fontSize: 11, color: "var(--text-disabled)", marginTop: 12, lineHeight: 1.6 }}>
-                  Highlighted lines in the resume show exactly where each issue is.
+                  {previewImages.length > 0
+                    ? "Issue quotes refer to text visible in the scanned preview on the left."
+                    : "Highlighted lines in the resume show exactly where each issue is."}
                 </p>
               </div>
             </div>

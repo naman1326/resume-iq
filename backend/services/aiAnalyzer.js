@@ -1,120 +1,227 @@
 import Groq from "groq-sdk";
+import { GoogleGenerativeAI } from "@google/generative-ai";
 
-const buildPrompt = (resumeText) => `
-You are an expert resume analyst and career coach.
-Analyse the resume below and return ONLY a valid JSON object.
-No markdown, no explanation, no extra text. Just raw JSON.
+const buildVisionPrompt = () => `
+You are a World-Class Resume Analyst and Career Coach with expertise in visual design, layout, and ATS compatibility.
+Your goal is to provide a deep, high-fidelity analysis of the provided resume.
 
-The JSON must follow this EXACT structure:
+--- ANALYSIS INSTRUCTIONS ---
+1. CROSS-REFERENCE: Use the provided "DOCUMENT TEXT LAYER" for 100% accurate extraction of contact info, links (LinkedIn, GitHub, Portfolio), and specific technical keywords. The image(s) are for analyzing layout, hierarchy, and visual polish.
+2. BE CRITICAL: Avoid score inflation. A "good" resume is 70-80. A "perfect" resume is 90+. 
+3. LINK DETECTION: Ensure you extract ALL URLs present in the text layer. If a link is present but doesn't work or is poorly formatted, mark it as an issue.
+4. ATS CHECKLIST: Evaluate if the design is modern but ATS-friendly. Note that our system handles columns and tables, so ONLY penalize if the visual hierarchy is confusing or fonts are unreadable.
+
+--- JSON SCHEMA ---
 {
   "name": "Full name from resume",
-  "role": "Most recent job title or target role",
-  "overallScore": <integer 0-100>,
-  "atsScore": <integer 0-100>,
-  "readabilityScore": <integer 0-100>,
-  "impactScore": <integer 0-100>,
+  "role": "Current or target role",
+  "overallScore": 0-100,
+  "atsScore": 0-100,
+  "readabilityScore": 0-100,
+  "impactScore": 0-100,
   "sections": {
-    "contact":      <integer 0-100>,
-    "summary":      <integer 0-100>,
-    "experience":   <integer 0-100>,
-    "skills":       <integer 0-100>,
-    "education":    <integer 0-100>,
-    "achievements": <integer 0-100>
+    "contact":      0-100,
+    "summary":      0-100,
+    "experience":   0-100,
+    "skills":       0-100,
+    "education":    0-100,
+    "achievements": 0-100
   },
   "radarData": [
-    { "subject": "ATS Match",  "A": <integer 0-100> },
-    { "subject": "Keywords",   "A": <integer 0-100> },
-    { "subject": "Formatting", "A": <integer 0-100> },
-    { "subject": "Impact",     "A": <integer 0-100> },
-    { "subject": "Clarity",    "A": <integer 0-100> },
-    { "subject": "Length",     "A": <integer 0-100> }
+    { "subject": "ATS Match",  "A": 0-100 },
+    { "subject": "Keywords",   "A": 0-100 },
+    { "subject": "Formatting", "A": 0-100 },
+    { "subject": "Impact",     "A": 0-100 },
+    { "subject": "Clarity",    "A": 0-100 },
+    { "subject": "Length",     "A": 0-100 }
   ],
   "skills": {
-    "matched": ["skill1", "skill2"],
-    "missing": ["skill1", "skill2"],
-    "bonus":   ["skill1", "skill2"]
+    "matched": ["tech1", "tech2"],
+    "missing": ["suggested_tech1"],
+    "bonus":   ["extra_value_skill"]
   },
   "issues": [
     {
       "type": "error|warn|info",
-      "text": "Explanation of the issue and how to fix it",
-      "quote": "Copy the EXACT line or phrase from the resume that has this issue. Must be copied verbatim from the resume text. If the issue is general with no specific line, use empty string."
+      "text": "Detailed explanation of the issue",
+      "quote": "EXACT text string from the resume for highlighting",
+      "page": 1
     }
   ],
   "suggestions": [
-    { "tag": "HIGH", "title": "Short title", "body": "Detailed actionable suggestion 2-3 sentences" },
-    { "tag": "MED",  "title": "Short title", "body": "Detailed actionable suggestion 2-3 sentences" },
-    { "tag": "LOW",  "title": "Short title", "body": "Detailed actionable suggestion 2-3 sentences" }
+    { "tag": "HIGH|MED|LOW", "title": "Short title", "body": "Detailed actionable fix", "page": 1 }
   ]
 }
 
-IMPORTANT for issues:
-- The "quote" field must be copied EXACTLY from the resume text word for word
-- It should be the specific sentence, bullet point, or phrase that has the problem
-- This is used to highlight that exact line in the resume preview
-- Keep the quote short — just the problematic part, not entire paragraphs
-- If it is a general issue (like missing LinkedIn) use empty string "" for quote
+IMPORTANT: Output ONLY raw JSON. No markdown.`;
 
-Resume text:
----
-${resumeText}
----
-`;
-
-const validateResponse = (data) => {
-  const required = [
-    "name", "role", "overallScore", "atsScore",
-    "readabilityScore", "impactScore", "sections",
-    "radarData", "skills", "issues", "suggestions"
-  ];
-  const missing = required.filter((k) => !(k in data));
-  if (missing.length > 0) {
-    throw new Error(`AI response missing fields: ${missing.join(", ")}. Please try again.`);
-  }
+const validateResponse = (data, pageCount = 1) => {
+  const required = ["name", "overallScore", "atsScore", "sections", "issues", "suggestions"];
+  required.forEach(k => { if (!(k in data)) throw new Error(`Missing field: ${k}`); });
   const clamp = (v) => Math.max(0, Math.min(100, Math.round(Number(v) || 0)));
-  data.overallScore     = clamp(data.overallScore);
-  data.atsScore         = clamp(data.atsScore);
-  data.readabilityScore = clamp(data.readabilityScore);
-  data.impactScore      = clamp(data.impactScore);
-  Object.keys(data.sections).forEach((k) => { data.sections[k] = clamp(data.sections[k]); });
-  data.radarData = data.radarData.map((r) => ({ subject: r.subject, A: clamp(r.A) }));
-  // Ensure every issue has a quote field
-  data.issues = data.issues.map(i => ({ ...i, quote: i.quote || "" }));
+  data.overallScore = clamp(data.overallScore);
+  data.atsScore = clamp(data.atsScore);
+  data.issues = (data.issues || []).map(i => ({ 
+    ...i, 
+    page: Math.min(Math.max(1, i.page || 1), pageCount),
+    quote: i.quote || "" 
+  }));
+  data.suggestions = (data.suggestions || []).map(s => ({
+    ...s,
+    page: Math.min(Math.max(1, s.page || 1), pageCount)
+  }));
 };
 
-export const analyzeResume = async (resumeText) => {
-  if (!process.env.GROQ_API_KEY) {
-    throw new Error("GROQ_API_KEY is not set in environment variables.");
-  }
-  const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
-  let rawText = "";
-  try {
-    const response = await groq.chat.completions.create({
-      model: "llama-3.3-70b-versatile",
-      messages: [
-        {
-          role: "system",
-          content: "You are a professional resume analyst. Always respond with valid JSON only. No markdown, no code fences, no explanation. Just the JSON object."
-        },
-        {
-          role: "user",
-          content: buildPrompt(resumeText)
-        }
-      ],
-      temperature: 0.2,
-      max_tokens: 2048,
-      response_format: { type: "json_object" }
+const buildJDMatchPrompt = (jdText) => `
+You are a Senior Technical Recruiter. Perform a surgical match analysis.
+
+--- JOB DESCRIPTION ---
+${jdText}
+
+--- INSTRUCTIONS ---
+1. Identify the CORE 5 requirements from the JD.
+2. Search the resume's text layer and images for specific evidence of these requirements.
+3. If the candidate has the skill but not enough YEARS of experience as requested, score the Technical Match high but the Experience Match lower.
+4. Provide highly specific adjustments like "Rewrite your 'Senior Developer' bullet #3 to include 'Kubernetes cluster management' to match the JD's focus."
+
+Return ONLY JSON:
+{
+  "matchScore": 0-100,
+  "explanation": "Detailed 3-4 sentence analysis",
+  "analysis": {
+    "technicalMatch": 0-100,
+    "experienceMatch": 0-100,
+    "educationMatch": 0-100,
+    "softSkillsMatch": 0-100
+  },
+  "keywords": { "matched": [], "missing": [], "bonus": [] },
+  "adjustments": [
+    { "title": "...", "suggestion": "...", "location": "...", "priority": "HIGH|MED|LOW" }
+  ]
+}`;
+
+const analyzeWithGemini = async (resumeData) => {
+  const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+  const modelName = process.env.GEMINI_MODEL || "gemini-2.5-flash";
+  const model = genAI.getGenerativeModel({ model: modelName });
+
+  const combinedPrompt = `DOCUMENT TEXT LAYER:\n${resumeData.fullText}\n\n${buildVisionPrompt()}`;
+
+  let parts = [{ text: combinedPrompt }];
+  if (resumeData.format === "pdf" && resumeData.rawBuffer) {
+    parts.push({ inlineData: { data: resumeData.rawBuffer.toString("base64"), mimeType: "application/pdf" } });
+  } else {
+    resumeData.images.forEach(img => {
+      parts.push({ inlineData: { data: img.base64, mimeType: "image/jpeg" } });
     });
-    rawText = response.choices[0].message.content;
-    const parsed = JSON.parse(rawText);
-    validateResponse(parsed);
-    return parsed;
-  } catch (err) {
-    if (err.message.includes("GROQ_API_KEY")) throw err;
-    if (err instanceof SyntaxError) {
-      console.error("Raw Groq response:", rawText);
-      throw new Error("AI returned invalid JSON. Please try again.");
-    }
-    throw new Error(`Groq error: ${err.message}`);
   }
+
+  const result = await model.generateContent(parts);
+  const response = await result.response;
+  let text = response.text();
+  text = text.replace(/```json\n?|```/g, "").trim();
+  const parsed = JSON.parse(text);
+  validateResponse(parsed, resumeData.pageCount || 1);
+  return parsed;
+};
+
+const analyzeWithGroq = async (resumeData, groq) => {
+  const toDataUrl = (img) => ({
+    type: "image_url",
+    image_url: { url: `data:${img.mimeType || "image/png"};base64,${img.base64}` }
+  });
+
+  const response = await groq.chat.completions.create({
+    model: process.env.GROQ_VISION_MODEL || "meta-llama/llama-4-scout-17b-16e-instruct",
+    messages: [
+      { role: "system", content: "You are a resume scoring engine. Output ONLY JSON." },
+      { 
+        role: "user", 
+        content: [
+          { type: "text", text: `DOCUMENT TEXT LAYER:\n${resumeData.fullText}\n\n${buildVisionPrompt()}` }, 
+          ...resumeData.images.map(toDataUrl)
+        ] 
+      }
+    ],
+    temperature: 0.2,
+    response_format: { type: "json_object" },
+  });
+
+  const parsed = JSON.parse(response.choices[0]?.message?.content || "{}");
+  validateResponse(parsed, resumeData.pageCount || 1);
+  return parsed;
+};
+
+const matchWithGemini = async (resumeData, jdText) => {
+  const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+  const modelName = process.env.GEMINI_MODEL_FLASH || "gemini-2.5-flash";
+  const model = genAI.getGenerativeModel({ model: modelName });
+
+  let parts = [{ text: `DOCUMENT TEXT LAYER:\n${resumeData.fullText}\n\n${buildJDMatchPrompt(jdText)}` }];
+  if (resumeData.format === "pdf" && resumeData.rawBuffer) {
+    parts.push({ inlineData: { data: resumeData.rawBuffer.toString("base64"), mimeType: "application/pdf" } });
+  } else {
+    resumeData.images.forEach(img => {
+      parts.push({ inlineData: { data: img.base64, mimeType: "image/jpeg" } });
+    });
+  }
+
+  const result = await model.generateContent(parts);
+  const text = result.response.text().replace(/```json\n?|```/g, "").trim();
+  return JSON.parse(text);
+};
+
+const matchWithGroq = async (resumeData, jdText, groq) => {
+  const toDataUrl = (img) => ({
+    type: "image_url",
+    image_url: { url: `data:${img.mimeType || "image/png"};base64,${img.base64}` }
+  });
+
+  const response = await groq.chat.completions.create({
+    model: process.env.GROQ_VISION_MODEL || "meta-llama/llama-4-scout-17b-16e-instruct",
+    messages: [
+      { role: "system", content: "You are a JD matching engine. Output ONLY JSON." },
+      { 
+        role: "user", 
+        content: [
+          { type: "text", text: `DOCUMENT TEXT LAYER:\n${resumeData.fullText}\n\n${buildJDMatchPrompt(jdText)}` }, 
+          ...resumeData.images.map(toDataUrl)
+        ] 
+      }
+    ],
+    temperature: 0.1,
+    response_format: { type: "json_object" },
+  });
+
+  return JSON.parse(response.choices[0]?.message?.content || "{}");
+};
+
+export const analyzeResume = async (resumeData) => {
+  const provider = (process.env.AI_PROVIDER || "groq").toLowerCase();
+  const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
+  
+  if (provider === "gemini") {
+    const model = process.env.GEMINI_MODEL || "gemini-2.5-flash";
+    console.log(`💎 Attempting Gemini Analysis (Model: ${model})...`);
+    return await analyzeWithGemini(resumeData);
+  }
+
+  const model = process.env.GROQ_VISION_MODEL || "meta-llama/llama-4-scout-17b-16e-instruct";
+  console.log(`🦁 Attempting Groq Analysis (Model: ${model})...`);
+  return await analyzeWithGroq(resumeData, groq);
+};
+
+export const matchJobDescription = async (resumeData, jdText) => {
+  const provider = (process.env.AI_PROVIDER || "groq").toLowerCase();
+  const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
+
+  if (provider === "gemini") {
+    const model = process.env.GEMINI_MODEL_FLASH || "gemini-2.5-flash";
+    console.log(`💎 Attempting Gemini JD Match (Model: ${model})...`);
+    return await matchWithGemini(resumeData, jdText);
+  }
+
+  const model = process.env.GROQ_VISION_MODEL || "meta-llama/llama-4-scout-17b-16e-instruct";
+  console.log(`🦁 Attempting Groq JD Match (Model: ${model})...`);
+  return await matchWithGroq(resumeData, jdText, groq);
 };

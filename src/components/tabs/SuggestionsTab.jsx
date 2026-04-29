@@ -31,23 +31,6 @@ const SuggestionsTab = ({ data }) => (
             fontSize: 16, color: "var(--text-primary)" }}>{s.title}</h3>
         </div>
         <p style={{ fontSize: 14, color: "var(--text-muted)", lineHeight: 1.7 }}>{s.body}</p>
-        <div style={{ marginTop: 16, display: "flex", gap: 8 }}>
-          <button style={{
-            padding: "8px 18px", borderRadius: 10, border: "none",
-            background: "linear-gradient(135deg,#6366f1,#8b5cf6)",
-            color: "#fff", fontWeight: 600, fontSize: 13, cursor: "pointer",
-            display: "flex", alignItems: "center", gap: 6
-          }}>
-            <Zap size={13} /> Apply Fix
-          </button>
-          <button style={{
-            padding: "8px 18px", borderRadius: 10,
-            border: "1.5px solid var(--border)", background: "transparent",
-            color: "var(--text-muted)", fontWeight: 600, fontSize: 13, cursor: "pointer"
-          }}>
-            Learn More
-          </button>
-        </div>
       </div>
     ))}
   </div>

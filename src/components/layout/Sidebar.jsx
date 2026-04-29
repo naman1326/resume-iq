@@ -10,6 +10,7 @@ export const navItems = [
   { id: "overview", icon: BarChart2,   label: "Overview"    },
   { id: "ats",      icon: Shield,      label: "ATS Check"   },
   { id: "skills",   icon: Code,        label: "Skills Gap"  },
+  { id: "matcher",  icon: Zap,         label: "Job Matcher" },
   { id: "issues",   icon: AlertCircle, label: "Issues"      },
   { id: "suggest",  icon: Layers,      label: "Suggestions" },
 ];

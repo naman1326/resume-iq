@@ -2,10 +2,13 @@ const ALLOWED_TYPES = [
   "application/pdf",
   "application/msword",
   "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  "image/png",
+  "image/jpeg",
+  "image/webp",
 ];
 
-const ALLOWED_EXTENSIONS = ["pdf", "doc", "docx"];
-const MAX_SIZE_MB = 5;
+const ALLOWED_EXTENSIONS = ["pdf", "doc", "docx", "png", "jpg", "jpeg", "webp"];
+const MAX_SIZE_MB = 15;
 
 /**
  * Validates uploaded file — type, extension, and size.
@@ -15,7 +18,7 @@ export const validateFile = (req, res, next) => {
   if (!req.file) {
     return res.status(400).json({
       success: false,
-      error: "No file uploaded. Please attach a PDF or Word document.",
+      error: "No file uploaded. Please attach a PDF, Word document, or image (PNG/JPEG/WebP).",
     });
   }
 
@@ -26,7 +29,7 @@ export const validateFile = (req, res, next) => {
   if (!ALLOWED_EXTENSIONS.includes(ext)) {
     return res.status(400).json({
       success: false,
-      error: `Unsupported file type ".${ext}". Please upload a PDF, DOC, or DOCX file.`,
+      error: `Unsupported file type ".${ext}". Please upload a PDF, DOC/DOCX, or image (PNG/JPEG/WebP).`,
     });
   }
 
